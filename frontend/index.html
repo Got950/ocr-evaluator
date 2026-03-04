@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OCR Evaluator</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 1rem;
+      background: #f5f5f5;
+    }
+    h1 { font-size: 1.5rem; margin: 0 0 1rem; }
+    .tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .tab {
+      padding: 0.5rem 1rem;
+      background: #e0e0e0;
+      border: none;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .tab.active { background: #1976d2; color: white; }
+    .panel { display: none; background: white; padding: 1rem; border-radius: 8px; }
+    .panel.active { display: block; }
+    input, select, textarea, button { padding: 0.5rem; margin: 0.25rem 0; }
+    button { background: #1976d2; color: white; border: none; cursor: pointer; border-radius: 4px; }
+    button:hover { background: #1565c0; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    .msg { margin: 0.5rem 0; padding: 0.5rem; border-radius: 4px; }
+    .msg.success { background: #e8f5e9; color: #2e7d32; }
+    .msg.error { background: #ffebee; color: #c62828; }
+    .msg.info { background: #e3f2fd; color: #1565c0; }
+    pre { background: #fafafa; padding: 0.5rem; overflow-x: auto; font-size: 0.85rem; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 0.25rem; text-align: left; border-bottom: 1px solid #eee; }
+    .question-row { margin: 0.5rem 0; padding: 0.5rem; border: 1px solid #eee; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>OCR Evaluator – AI Exam Grading</h1>
+  <div class="tabs">
+    <button class="tab active" data-panel="upload">1. Upload Question Paper</button>
+    <button class="tab" data-panel="save">2. Save Questions</button>
+    <button class="tab" data-panel="submit">3. Submit Answer</button>
+    <button class="tab" data-panel="view">4. View Submission</button>
+  </div>
+
+  <div id="upload" class="panel active">
+    <h2>Upload & analyze question paper (PDF)</h2>
+    <input type="file" id="qpaper" accept=".pdf" />
+    <button id="analyzeBtn">Analyze</button>
+    <div id="analyzeMsg"></div>
+    <div id="analyzeResult"></div>
+  </div>
+
+  <div id="save" class="panel">
+    <h2>Save questions</h2>
+    <p>From analyzed paper above, or add manually:</p>
+    <div id="questionList"></div>
+    <button id="addQuestion">+ Add question</button>
+    <button id="saveQuestions">Save all</button>
+    <div id="saveMsg"></div>
+  </div>
+
+  <div id="submit" class="panel">
+    <h2>Submit answer booklet (PDF)</h2>
+    <label>Question set (first question ID)</label>
+    <select id="questionSelect"><option value="">Load questions...</option></select>
+    <input type="file" id="answerFile" accept=".pdf" />
+    <button id="submitBtn">Submit</button>
+    <div id="submitMsg"></div>
+  </div>
+
+  <div id="view" class="panel">
+    <h2>View submission</h2>
+    <input type="text" id="submissionId" placeholder="Submission ID" />
+    <button id="viewBtn">Fetch</button>
+    <button id="refreshBtn">Refresh</button>
+    <div id="viewResult"></div>
+    <div id="overrideSection" style="margin-top:1rem;display:none">
+      <h3>Manual override</h3>
+      <div id="overrideInputs"></div>
+      <button id="overrideBtn">Apply override</button>
+      <div id="overrideMsg"></div>
+    </div>
+  </div>
+
+  <script>
+    const API = '';
+    const qDrafts = [];
+
+    document.querySelectorAll('.tab').forEach(t => {
+      t.onclick = () => {
+        document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(x => x.classList.remove('active'));
+        t.classList.add('active');
+        document.getElementById(t.dataset.panel).classList.add('active');
+        if (t.dataset.panel === 'submit') loadQuestions();
+      };
+    });
+
+    async function loadQuestions() {
+      const sel = document.getElementById('questionSelect');
+      try {
+        const r = await fetch(API + '/professor/questions');
+        const d = await r.json();
+        sel.innerHTML = '<option value="">-- Select --</option>';
+        if (d.questions && d.questions.length) {
+          d.questions.forEach(q => sel.appendChild(new Option(q.question_text, q.id)));
+        }
+      } catch (e) {
+        sel.innerHTML = '<option value="">Error loading</option>';
+      }
+    }
+
+    document.getElementById('analyzeBtn').onclick = async () => {
+      const f = document.getElementById('qpaper').files[0];
+      const msg = document.getElementById('analyzeMsg');
+      const out = document.getElementById('analyzeResult');
+      msg.textContent = '';
+      out.innerHTML = '';
+      if (!f) { msg.className = 'msg error'; msg.textContent = 'Choose a PDF'; return; }
+      const fd = new FormData();
+      fd.append('file', f);
+      msg.className = 'msg info';
+      msg.textContent = 'Analyzing...';
+      try {
+        const r = await fetch(API + '/professor/analyze-question-paper', { method: 'POST', body: fd });
+        const d = await r.json();
+        if (d.status === 'error') throw new Error(d.message);
+        qDrafts.length = 0;
+        d.questions.forEach(q => qDrafts.push({
+          question_text: q.question_text,
+          answer_key: '',
+          max_marks: q.max_marks_guess || 5,
+          evaluation_level: q.suggested_level || 'easy',
+        }));
+        msg.className = 'msg success';
+        msg.textContent = 'Found ' + d.questions.length + ' questions. Edit below and save.';
+        renderQuestionList();
+        out.innerHTML = '<pre>' + (d.extracted_text || '').slice(0, 500) + '</pre>';
+      } catch (e) {
+        msg.className = 'msg error';
+        msg.textContent = e.message || 'Failed';
+      }
+    };
+
+    function renderQuestionList() {
+      const el = document.getElementById('questionList');
+      el.innerHTML = qDrafts.map((q, i) => `
+        <div class="question-row" data-i="${i}">
+          <b>Q${i + 1}</b>
+          <textarea rows="2" placeholder="Question text" data-field="question_text">${q.question_text || ''}</textarea>
+          <input placeholder="Answer key" data-field="answer_key" value="${q.answer_key || ''}" />
+          <input type="number" placeholder="Max marks" data-field="max_marks" value="${q.max_marks || 5}" style="width:80px" />
+          <select data-field="evaluation_level">
+            <option value="easy" ${q.evaluation_level === 'easy' ? 'selected' : ''}>Easy</option>
+            <option value="medium" ${q.evaluation_level === 'medium' ? 'selected' : ''}>Medium</option>
+            <option value="hard" ${q.evaluation_level === 'hard' ? 'selected' : ''}>Hard</option>
+          </select>
+        </div>
+      `).join('');
+      el.querySelectorAll('[data-field]').forEach(inp => {
+        inp.onchange = () => {
+          const i = parseInt(inp.closest('.question-row').dataset.i);
+          qDrafts[i][inp.dataset.field] = inp.value;
+        };
+      });
+    }
+
+    document.getElementById('addQuestion').onclick = () => {
+      qDrafts.push({ question_text: '', answer_key: '', max_marks: 5, evaluation_level: 'easy' });
+      renderQuestionList();
+    };
+
+    document.getElementById('saveQuestions').onclick = async () => {
+      const rows = document.querySelectorAll('#questionList .question-row');
+      const valid = [];
+      rows.forEach(row => {
+        const qt = row.querySelector('[data-field="question_text"]');
+        const ak = row.querySelector('[data-field="answer_key"]');
+        const mm = row.querySelector('[data-field="max_marks"]');
+        const el = row.querySelector('[data-field="evaluation_level"]');
+        const q = {
+          question_text: (qt && qt.value || '').trim(),
+          answer_key: (ak && ak.value || '').trim(),
+          max_marks: parseInt(mm && mm.value, 10) || 5,
+          evaluation_level: (el && el.value) || 'easy',
+        };
+        if (q.question_text && q.answer_key) valid.push(q);
+      });
+      const msg = document.getElementById('saveMsg');
+      if (!valid.length) {
+        msg.className = 'msg error';
+        msg.textContent = 'Add at least one question with text and answer key';
+        return;
+      }
+      msg.className = 'msg info';
+      msg.textContent = 'Saving...';
+      try {
+        const r = await fetch(API + '/professor/create-questions-batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: valid }),
+        });
+        const d = await r.json();
+        if (d.status === 'error') throw new Error(d.message);
+        msg.className = 'msg success';
+        msg.textContent = 'Saved ' + d.question_ids.length + ' questions.';
+      } catch (e) {
+        msg.className = 'msg error';
+        msg.textContent = e.message || 'Failed';
+      }
+    };
+
+    document.getElementById('submitBtn').onclick = async () => {
+      const qid = document.getElementById('questionSelect').value;
+      const f = document.getElementById('answerFile').files[0];
+      const msg = document.getElementById('submitMsg');
+      msg.textContent = '';
+      if (!qid || !f) {
+        msg.className = 'msg error';
+        msg.textContent = 'Select question set and PDF file';
+        return;
+      }
+      const fd = new FormData();
+      fd.append('question_id', qid);
+      fd.append('file', f);
+      msg.className = 'msg info';
+      msg.textContent = 'Submitting...';
+      try {
+        const r = await fetch(API + '/student/submit-answer', { method: 'POST', body: fd });
+        const d = await r.json();
+        if (d.status === 'error') throw new Error(d.message);
+        msg.className = 'msg success';
+        msg.textContent = 'Submitted. ID: ' + d.submission_id;
+        document.getElementById('submissionId').value = d.submission_id;
+        document.querySelector('[data-panel="view"]').click();
+      } catch (e) {
+        msg.className = 'msg error';
+        msg.textContent = e.message || 'Failed';
+      }
+    };
+
+    async function fetchSubmission(sid) {
+      const r = await fetch(API + '/submission/' + sid);
+      return r.json();
+    }
+
+    document.getElementById('viewBtn').onclick = async () => {
+      const sid = document.getElementById('submissionId').value.trim();
+      const out = document.getElementById('viewResult');
+      if (!sid) { out.innerHTML = '<div class="msg error">Enter submission ID</div>'; return; }
+      out.innerHTML = '<div class="msg info">Loading...</div>';
+      try {
+        const d = await fetchSubmission(sid);
+        if (d.status === 'error') throw new Error(d.message);
+        renderSubmission(d, out);
+      } catch (e) {
+        out.innerHTML = '<div class="msg error">' + e.message + '</div>';
+      }
+    };
+
+    document.getElementById('refreshBtn').onclick = () => document.getElementById('viewBtn').click();
+
+    let lastSubmissionData = null;
+
+    function renderSubmission(d, out) {
+      lastSubmissionData = d;
+      const status = d.submission_status || d.status;
+      let html = '<table><tr><th>Field</th><th>Value</th></tr>';
+      html += '<tr><td>Status</td><td>' + status + '</td></tr>';
+      html += '<tr><td>Score</td><td>' + (d.final_score ?? d.score ?? '-') + '</td></tr>';
+      html += '<tr><td>Total</td><td>' + (d.total_score ?? '-') + '</td></tr>';
+      html += '<tr><td>Percentage</td><td>' + (d.percentage != null ? (d.percentage * 100).toFixed(1) + '%' : '-') + '</td></tr>';
+      html += '<tr><td>Feedback</td><td>' + (d.feedback || '-') + '</td></tr>';
+      html += '</table>';
+      if (d.per_question_scores && Object.keys(d.per_question_scores).length) {
+        html += '<h3>Per question</h3><table><tr><th>Q</th><th>Score</th><th>Max</th><th>Details</th></tr>';
+        for (const [k, v] of Object.entries(d.per_question_scores)) {
+          html += '<tr><td>' + k + '</td><td>' + v.score + '</td><td>' + (v.max_marks || '-') + '</td><td><pre>' + JSON.stringify(v.evaluation_details || {}) + '</pre></td></tr>';
+        }
+        html += '</table>';
+        document.getElementById('overrideSection').style.display = 'block';
+        const inp = document.getElementById('overrideInputs');
+        inp.innerHTML = Object.keys(d.per_question_scores).map(k => '<label>Q' + k + '</label><input type="number" step="0.1" min="0" data-q="' + k + '" value="' + d.per_question_scores[k].score + '" style="width:60px;margin-right:1rem" />').join('');
+      } else {
+        document.getElementById('overrideSection').style.display = 'none';
+      }
+      if (d.extracted_text) html += '<h3>Extracted text</h3><pre>' + d.extracted_text.slice(0, 1500) + '</pre>';
+      out.innerHTML = html;
+    }
+
+    document.getElementById('overrideBtn').onclick = async () => {
+      const sid = document.getElementById('submissionId').value.trim();
+      const msg = document.getElementById('overrideMsg');
+      const inputs = document.querySelectorAll('#overrideInputs input[data-q]');
+      const payload = {};
+      inputs.forEach(inp => { payload[inp.dataset.q] = parseFloat(inp.value) || 0; });
+      if (!sid || !Object.keys(payload).length) {
+        msg.className = 'msg error';
+        msg.textContent = 'Enter submission ID and scores';
+        return;
+      }
+      msg.className = 'msg info';
+      msg.textContent = 'Applying...';
+      try {
+        const r = await fetch(API + '/submission/' + sid + '/override', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const d = await r.json();
+        if (d.status === 'error') throw new Error(d.message);
+        msg.className = 'msg success';
+        msg.textContent = 'Override applied. Final score: ' + d.final_score;
+        document.getElementById('viewBtn').click();
+      } catch (e) {
+        msg.className = 'msg error';
+        msg.textContent = e.message || 'Failed';
+      }
+    };
+
+    loadQuestions();
+  </script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic-settings
+SQLAlchemy>=2.0
+psycopg2-binary
+Pillow
+transformers
+torch
+sentence-transformers
+numpy
+anyio
+pdf2image
+sympy

@@ -1,0 +1,71 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Environment files (keep .env.example tracked)
+.env
+!.env.example
+
+# Uploads and user data
+uploads/
+temp_uploads/
+
+# ML model cache
+.cache/
+models/
+*.bin
+*.safetensors
+*.pt
+*.pth
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Alembic — track versions but not bytecode
+alembic/versions/__pycache__/
+
+# Docker volumes
+postgres_data/
+minio_data/
+redis_data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.cursor/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Misc
+*.bak
+*.tmp
