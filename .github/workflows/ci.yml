@@ -70,7 +70,7 @@ jobs:
           python -m pip install -r requirements-dev.txt
 
       - name: Run Alembic migrations
-        run: python -c "from alembic.config import main; main(['upgrade', 'head'])"
+        run: alembic upgrade head
 
       - name: Run tests
         run: pytest tests/ -v --tb=short
