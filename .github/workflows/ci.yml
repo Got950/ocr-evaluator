@@ -70,7 +70,9 @@ jobs:
           python -m pip install -r requirements-dev.txt
 
       - name: Run Alembic migrations
-        run: alembic upgrade head
+        run: |
+          export PATH="$(python -c 'import sys; print(sys.prefix)')/bin:$PATH"
+          alembic upgrade head
 
       - name: Run tests
         run: pytest tests/ -v --tb=short
