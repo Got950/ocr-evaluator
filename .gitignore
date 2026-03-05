@@ -26,6 +26,7 @@ temp_uploads/
 # ML model cache
 .cache/
 models/
+!app/models/
 *.bin
 *.safetensors
 *.pt
@@ -49,7 +50,6 @@ redis_data/
 .idea/
 *.swp
 *.swo
-.cursor/
 
 # OS
 .DS_Store

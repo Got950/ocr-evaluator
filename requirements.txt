@@ -4,6 +4,7 @@ python-multipart
 pydantic-settings
 SQLAlchemy>=2.0
 psycopg2-binary
+asyncpg
 alembic
 Pillow
 transformers
@@ -13,3 +14,10 @@ numpy
 anyio
 pdf2image
 sympy
+celery[redis]
+redis
+flower
+boto3
+aioboto3>=15.5.0
+python-jose[cryptography]
+passlib[bcrypt]

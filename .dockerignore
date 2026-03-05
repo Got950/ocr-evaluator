@@ -15,6 +15,3 @@ uploads/
 .git/
 .idea/
 .vscode/
-.cursor/
-terminals/
-agent-transcripts/

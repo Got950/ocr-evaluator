@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import os
 import sys
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.models.database import Base  # noqa: E402
 from app.config import get_settings  # noqa: E402
