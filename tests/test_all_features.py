@@ -13,6 +13,7 @@ from pathlib import Path
 import requests
 
 BASE_URL = "http://127.0.0.1:8001"
+API_BASE = f"{BASE_URL}/api/v1"
 TIMEOUT = 120  # OCR can be slow
 POLL_INTERVAL = 2
 POLL_MAX = 90  # max 90 * 2 = 180s wait for evaluation
@@ -90,6 +91,38 @@ def run(name: str, fn):
         return False
 
 
+_auth_headers_cache: dict | None = None
+
+
+def _get_auth_headers() -> dict:
+    """Register and login as admin, return headers with Bearer token."""
+    global _auth_headers_cache
+    if _auth_headers_cache is not None:
+        return _auth_headers_cache
+    try:
+        requests.post(
+            f"{API_BASE}/auth/register",
+            json={
+                "email": "ci_test_admin@test.com",
+                "password": "testpass123",
+                "role": "admin",
+                "institution_name": "CI Test",
+            },
+            timeout=10,
+        )
+    except Exception:
+        pass  # May already exist
+    r = requests.post(
+        f"{API_BASE}/auth/login",
+        data={"username": "ci_test_admin@test.com", "password": "testpass123"},
+        timeout=10,
+    )
+    assert r.status_code == 200, f"Login failed: {r.status_code} {r.text}"
+    token = r.json()["access_token"]
+    _auth_headers_cache = {"Authorization": f"Bearer {token}"}
+    return _auth_headers_cache
+
+
 def test_server_reachable():
     r = requests.get(f"{BASE_URL}/openapi.json", timeout=5)
     assert r.status_code == 200, f"Server not reachable: {r.status_code}"
@@ -105,7 +138,7 @@ def test_professor_create_question():
         "max_marks": 5,
         "evaluation_level": "easy",
     }
-    r = requests.post(f"{BASE_URL}/professor/create-question", json=payload, timeout=TIMEOUT)
+    r = requests.post(f"{API_BASE}/professor/create-question", json=payload, headers=_get_auth_headers(), timeout=TIMEOUT)
     assert r.status_code == 200, f"Status {r.status_code}: {r.text}"
     data = r.json()
     assert data.get("status") == "success"
@@ -123,7 +156,7 @@ def test_professor_create_three_questions_for_booklet():
             {"question_text": "Explain Newton's first law.", "answer_key": "Object at rest stays at rest", "max_marks": 7, "evaluation_level": "easy"},
         ]
     }
-    r = requests.post(f"{BASE_URL}/professor/create-questions-batch", json=payload, timeout=TIMEOUT)
+    r = requests.post(f"{API_BASE}/professor/create-questions-batch", json=payload, headers=_get_auth_headers(), timeout=TIMEOUT)
     assert r.status_code == 200, f"Status {r.status_code}: {r.text}"
     data = r.json()
     assert data.get("status") == "success"
@@ -141,8 +174,9 @@ def test_professor_analyze_question_paper():
     with open(pdf_path, "rb") as f:
         files = {"file": ("question_paper.pdf", f, "application/pdf")}
         r = requests.post(
-            f"{BASE_URL}/professor/analyze-question-paper",
+            f"{API_BASE}/professor/analyze-question-paper",
             files=files,
+            headers=_get_auth_headers(),
             timeout=TIMEOUT,
         )
     assert r.status_code == 200, f"Status {r.status_code}: {r.text}"
@@ -171,7 +205,7 @@ def test_professor_create_questions_batch():
             },
         ]
     }
-    r = requests.post(f"{BASE_URL}/professor/create-questions-batch", json=payload, timeout=TIMEOUT)
+    r = requests.post(f"{API_BASE}/professor/create-questions-batch", json=payload, headers=_get_auth_headers(), timeout=TIMEOUT)
     assert r.status_code == 200, f"Status {r.status_code}: {r.text}"
     data = r.json()
     assert data.get("status") == "success"
@@ -190,9 +224,10 @@ def test_student_submit_answer(question_id: str):
         files = {"file": ("answer_booklet.pdf", f, "application/pdf")}
         data_form = {"question_id": question_id}
         r = requests.post(
-            f"{BASE_URL}/student/submit-answer",
+            f"{API_BASE}/student/submit-answer",
             files=files,
             data=data_form,
+            headers=_get_auth_headers(),
             timeout=TIMEOUT,
         )
     assert r.status_code == 200, f"Status {r.status_code}: {r.text}"
@@ -203,14 +238,14 @@ def test_student_submit_answer(question_id: str):
 
 
 def test_evaluate_submission(submission_id: str):
-    r = requests.post(f"{BASE_URL}/evaluate/{submission_id}", timeout=TIMEOUT)
+    r = requests.post(f"{API_BASE}/evaluate/{submission_id}", headers=_get_auth_headers(), timeout=TIMEOUT)
     assert r.status_code == 200, f"Status {r.status_code}: {r.text}"
     return r.json()
 
 
 def wait_for_completed(submission_id: str) -> dict:
     for _ in range(POLL_MAX):
-        r = requests.get(f"{BASE_URL}/submission/{submission_id}", timeout=TIMEOUT)
+        r = requests.get(f"{API_BASE}/submission/{submission_id}", headers=_get_auth_headers(), timeout=TIMEOUT)
         assert r.status_code == 200, f"Status {r.status_code}: {r.text}"
         data = r.json()
         status = data.get("submission_status", "")
@@ -223,7 +258,7 @@ def wait_for_completed(submission_id: str) -> dict:
 
 
 def test_get_submission(submission_id: str):
-    r = requests.get(f"{BASE_URL}/submission/{submission_id}", timeout=TIMEOUT)
+    r = requests.get(f"{API_BASE}/submission/{submission_id}", headers=_get_auth_headers(), timeout=TIMEOUT)
     assert r.status_code == 200, f"Status {r.status_code}: {r.text}"
     data = r.json()
     assert "submission_id" in data
@@ -235,8 +270,9 @@ def test_get_submission(submission_id: str):
 def test_override_submission(submission_id: str):
     payload = {"1": 4.0, "2": 2.0}
     r = requests.post(
-        f"{BASE_URL}/submission/{submission_id}/override",
+        f"{API_BASE}/submission/{submission_id}/override",
         json=payload,
+        headers=_get_auth_headers(),
         timeout=TIMEOUT,
     )
     assert r.status_code == 200, f"Status {r.status_code}: {r.text}"
@@ -247,7 +283,7 @@ def test_override_submission(submission_id: str):
 
 
 def test_override_persisted(submission_id: str):
-    r = requests.get(f"{BASE_URL}/submission/{submission_id}", timeout=TIMEOUT)
+    r = requests.get(f"{API_BASE}/submission/{submission_id}", headers=_get_auth_headers(), timeout=TIMEOUT)
     assert r.status_code == 200, f"Status {r.status_code}: {r.text}"
     data = r.json()
     assert float(data.get("final_score", 0)) == 6.0
@@ -334,7 +370,7 @@ def main():
     if submission_id:
         total += 1
         try:
-            r = requests.get(f"{BASE_URL}/submission/{submission_id}", timeout=TIMEOUT)
+            r = requests.get(f"{API_BASE}/submission/{submission_id}", headers=_get_auth_headers(), timeout=TIMEOUT)
             assert r.status_code == 200
             data = r.json()
             assert float(data.get("final_score", 0)) == 6.0

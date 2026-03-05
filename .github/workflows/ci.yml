@@ -74,10 +74,19 @@ jobs:
           export PATH="$(python -c 'import sys; print(sys.prefix)')/bin:$PATH"
           alembic upgrade head
 
-      - name: Start FastAPI server
-        run: |
-          nohup uvicorn app.main:app --host 127.0.0.1 --port 8001 > /tmp/uvicorn.log 2>&1 &
-          sleep 5
-
       - name: Run tests
-        run: pytest tests/ -v --tb=short
+        run: |
+          uvicorn app.main:app --host 127.0.0.1 --port 8001 &
+          sleep 8
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8001/openapi.json > /dev/null; then
+              echo "Server ready"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "Server failed to start"
+              exit 1
+            fi
+            sleep 2
+          done
+          pytest tests/ -v --tb=short
