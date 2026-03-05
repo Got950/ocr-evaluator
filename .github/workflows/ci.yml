@@ -77,14 +77,15 @@ jobs:
       - name: Run tests
         run: |
           uvicorn app.main:app --host 127.0.0.1 --port 8001 &
-          sleep 8
-          for i in $(seq 1 30); do
+          echo "Waiting for server (ML models may take 90s to load)..."
+          sleep 90
+          for i in $(seq 1 60); do
             if curl -sf http://127.0.0.1:8001/openapi.json > /dev/null; then
               echo "Server ready"
               break
             fi
-            if [ $i -eq 30 ]; then
-              echo "Server failed to start"
+            if [ $i -eq 60 ]; then
+              echo "Server failed to start after 3 minutes"
               exit 1
             fi
             sleep 2
