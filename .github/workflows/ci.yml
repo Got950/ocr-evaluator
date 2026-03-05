@@ -74,5 +74,10 @@ jobs:
           export PATH="$(python -c 'import sys; print(sys.prefix)')/bin:$PATH"
           alembic upgrade head
 
+      - name: Start FastAPI server
+        run: |
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8001 > /tmp/uvicorn.log 2>&1 &
+          sleep 5
+
       - name: Run tests
         run: pytest tests/ -v --tb=short
