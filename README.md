@@ -177,6 +177,3 @@ ocr_evaluator/
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding standards, and how to add new grading engines.
 
-## License
-
-[MIT](LICENSE)
